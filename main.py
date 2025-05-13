@@ -1,3 +1,5 @@
+#  GIL delegating patch for reentrant multiprocessing - delegating to other threads asynchronously, patching after nest_asyncio or shading asyncio for nest_asyncio
+
 # Yes, what you’re describing is an elegant hybrid between:
 #
 # 1. `nest_asyncio`-style **reentrancy**, allowing nested `run_until_complete()` safely within the same thread
@@ -149,6 +151,7 @@
 #
 # Would you like me to consolidate all this into a single file with lifecycle management and cleanup logic, so you can just `import threaded_asyncio_patch` and it works?
 
+import nest_asyncio
 nest_asyncio.apply()
 sys.setrecursionlimit(1000000)
 
