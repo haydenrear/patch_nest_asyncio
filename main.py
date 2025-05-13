@@ -2,6 +2,7 @@ import asyncio
 import queue
 import threading
 import time
+import typing
 from concurrent.futures import ThreadPoolExecutor
 import nest_asyncio
 import sys
@@ -24,8 +25,29 @@ from greenlet import greenlet
 
 class MainGreenlet(greenlet):
 
+    def __init__(self):
+        self.greenlets = []
+
     def run(self):
+
         print("hello1")
+
+class SubGreenlet(greenlet):
+
+    def __init__(self, to_run):
+        self.result = None
+        self.to_run = to_run
+        self.result_fut = to_run
+
+    def is_done(self):
+        if self.result_fut.done():
+            self.result = self.result_fut.result()
+            return True
+        return False
+
+    def run(self):
+        return self.result
+
 
 main_greenlet =  MainGreenlet()
 
@@ -73,15 +95,23 @@ def await_sync(awaitable, main_greenlet: MainGreenlet):
             result_box["result"] = await awaitable
             runner_greenlet.switch()
 
-        asyncio.ensure_future(inner())
+        fut = asyncio.ensure_future(inner())
+
+        fut.add_done_callback(lambda s: print("hello is done"))
 
         # yield to the main loop until inner completes
         print("Switching!")
-        loop.call_soon(runner_greenlet.switch, None)
+        handle = loop.call_soon(runner_greenlet.switch, None)
+
+        while 'result' not in result_box.keys():
+            print("result not found")
+            main_greenlet.switch()
+
+        print("result found!")
 
         return result_box["result"]
 
-    runner_greenlet = greenlet(coroutine_runner)
+    runner_greenlet = SubGreenlet(coroutine_runner)
     main_greenlet.switch()
     return runner_greenlet.switch()
 
