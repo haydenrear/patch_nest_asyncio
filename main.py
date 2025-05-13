@@ -1,4 +1,5 @@
 import asyncio
+import queue
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +17,17 @@ _main_thread = threading.main_thread()
 _main_loop = asyncio.get_event_loop()
 
 executor = ThreadPoolExecutor(max_workers=4)
+from greenlet import getcurrent
 
+from greenlet import greenlet
+
+
+class MainGreenlet(greenlet):
+
+    def run(self):
+        print("hello1")
+
+main_greenlet =  MainGreenlet()
 
 def patched_run_until_complete(self, future):
     # Main thread and already running = offload
@@ -24,7 +35,7 @@ def patched_run_until_complete(self, future):
     print(current_thread)
     if current_thread.name == threading.main_thread().name:
         print("Running main thread!")
-        f = await_sync(future)
+        f = await_sync(future, main_greenlet)
         print(f"Found {f}")
         return f
     print("Running original!")
@@ -37,7 +48,7 @@ def patched_asyncio_run(awaitable, *, debug=False):
         print(thread)
         if thread.name == threading.main_thread().name:
             print("Running curr")
-            return await_sync(awaitable)
+            return await_sync(awaitable, main_greenlet)
     except RuntimeError:
         print('err')
     print("Running original")
@@ -48,10 +59,9 @@ def patch_asyncio_safely():
     asyncio.BaseEventLoop.run_until_complete = patched_run_until_complete
     asyncio.run = patched_asyncio_run
 
-from greenlet import greenlet
 import asyncio
 
-def await_sync(awaitable):
+def await_sync(awaitable, main_greenlet: MainGreenlet):
     """
     Suspend sync function and await the awaitable inside the main event loop.
     """
@@ -67,19 +77,18 @@ def await_sync(awaitable):
 
         # yield to the main loop until inner completes
         print("Switching!")
-        loop.call_soon(runner_greenlet.switch)
-        main_greenlet.switch()
+        loop.call_soon(runner_greenlet.switch, None)
 
         return result_box["result"]
 
-    main_greenlet = greenlet.getcurrent()
     runner_greenlet = greenlet(coroutine_runner)
+    main_greenlet.switch()
     return runner_greenlet.switch()
 
 
 # Apply patch
 # patch_asyncio_safely()
-
+# nest_asyncio.apply()
 sys.setrecursionlimit(1000000)
 patch_asyncio_safely()
 
